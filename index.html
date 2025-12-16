@@ -3,210 +3,778 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Matter Playground</title>
-  <link rel="stylesheet" href="./src/style.css">
+  <title>Cloth Simulation Playground</title>
+  <style>
+    :root {
+      --bg: #0b1021;
+      --panel: #0f162f;
+      --surface: #131b36;
+      --accent: #7dd3fc;
+      --accent-2: #a855f7;
+      --text: #e5e7f3;
+      --muted: #8da2d6;
+      --danger: #f87171;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(circle at 20% 20%, #141b39, #090d1f 45%), #0b1021;
+      color: var(--text);
+      font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      padding: 16px 24px 0;
+    }
+    .title-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .title {
+      font-size: 26px;
+      font-weight: 700;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 14px;
+      margin-top: 4px;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 14px;
+      padding: 10px 10px 20px;
+      flex: 1;
+      min-height: 0;
+    }
+    .panel {
+      background: linear-gradient(180deg, #121b33 0%, #0d1326 100%);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 16px;
+      padding: 14px 16px 18px;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+    }
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      height: calc(100vh - 130px);
+      overflow: auto;
+    }
+    .control-group {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.05);
+      border-radius: 12px;
+      padding: 10px 12px;
+    }
+    .group-title {
+      font-weight: 600;
+      margin-bottom: 8px;
+      letter-spacing: 0.02em;
+    }
+    label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 2px; }
+    .slider-row { display: flex; align-items: center; gap: 8px; }
+    input[type="range"] { flex: 1; accent-color: var(--accent); }
+    .value { width: 52px; text-align: right; color: var(--accent); font-variant-numeric: tabular-nums; }
+    button, .file-label {
+      border: none;
+      background: linear-gradient(120deg, rgba(125,211,252,0.18), rgba(168,85,247,0.18));
+      color: var(--text);
+      padding: 9px 12px;
+      border-radius: 10px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid rgba(255,255,255,0.08);
+      transition: transform 0.12s ease, filter 0.12s ease, background 0.12s;
+    }
+    button:hover, .file-label:hover { transform: translateY(-1px); filter: brightness(1.08); }
+    button.secondary { background: rgba(255,255,255,0.06); }
+    button.danger { background: rgba(248,113,113,0.12); color: #fecdd3; border-color: rgba(248,113,113,0.4); }
+    button.toggled { box-shadow: 0 0 0 2px rgba(168,85,247,0.5); background: rgba(168,85,247,0.2); }
+    .file-label {
+      display: inline-flex;
+      gap: 8px;
+      align-items: center;
+      position: relative;
+    }
+    .file-label input { display: none; }
+    .canvas-wrap {
+      position: relative;
+      background: radial-gradient(circle at 60% 10%, rgba(125,211,252,0.04), transparent 40%),
+                  radial-gradient(circle at 20% 80%, rgba(168,85,247,0.05), transparent 35%),
+                  #090d1f;
+      border: 1px solid rgba(255,255,255,0.05);
+      border-radius: 16px;
+      overflow: hidden;
+      height: calc(100vh - 110px);
+      min-height: 500px;
+    }
+    canvas { width: 100%; height: 100%; display: block; }
+    .hud {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      align-items: flex-end;
+      pointer-events: none;
+    }
+    .pill {
+      background: rgba(0,0,0,0.45);
+      color: var(--muted);
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      border: 1px solid rgba(255,255,255,0.1);
+      pointer-events: auto;
+    }
+    .badge { color: #a5b4fc; }
+    .wind-indicator { display: flex; align-items: center; gap: 6px; }
+    .legend { font-size: 12px; color: var(--muted); line-height: 1.5; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .note { font-size: 12px; color: var(--muted); margin-top: 6px; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  </style>
 </head>
 <body>
-  <div class="app-shell surface-paper">
-    <header class="top-bar">
-      <div class="brand-block">
-        <div class="brand-mark">◎</div>
-        <div>
-          <div class="brand">Matter Playground</div>
-          <div class="subtitle">Playful physics sketchpad</div>
-        </div>
-      </div>
-      <div class="top-actions">
-        <div class="quiet-group">
-          <button class="quiet-btn" id="playPauseBtn" aria-label="Play or pause">Pause</button>
-          <button class="quiet-btn" id="undoBtn" title="Undo (Ctrl+Z)">Undo</button>
-          <button class="quiet-btn" id="redoBtn" title="Redo (Ctrl+Shift+Z)">Redo</button>
-        </div>
-        <div class="quiet-group">
-          <button class="quiet-btn" id="saveSceneBtn">Save</button>
-          <label class="file-btn" aria-label="Load scene">
-            Load
-            <input type="file" id="loadSceneInput" accept="application/json">
-          </label>
-          <div class="settings">
-            <button class="quiet-btn" id="settingsToggle" aria-haspopup="true">Settings</button>
-            <div class="settings-panel" id="settingsPanel">
-              <div class="panel-title">Workspace</div>
-              <div class="pill-row compact" id="surfaceButtons">
-                <button data-surface="paper" class="pill active">Paper</button>
-                <button data-surface="grid" class="pill">Grid</button>
-                <button data-surface="dark" class="pill">Studio</button>
-              </div>
-              <label class="toggle">
-                <input type="checkbox" id="debugToggle">
-                <span>Debug overlay</span>
-              </label>
-            </div>
-          </div>
-        </div>
-      </div>
-    </header>
+  <header>
+    <div class="title-row">
+      <div class="title">Cloth Simulation Playground</div>
+      <span class="pill badge">Matter.js + Canvas</span>
+    </div>
+    <div class="subtitle">Cut, pin, texture, and blow wind across a live cloth mesh. Drag anywhere to grab the fabric.</div>
+  </header>
 
-    <div class="canvas-wrapper">
-      <div id="renderHost" class="render-host"></div>
-      <canvas id="ghostCanvas" class="ghost-layer"></canvas>
-
-      <div class="toolbelt" id="toolbelt">
-        <div class="toolbelt-track" id="toolButtons">
-          <button data-tool="select" class="tool active">
-            <span class="icon">◆</span>
-            <span class="label">Select</span>
-          </button>
-          <div class="tool add has-palette" data-tool="rectangle">
-            <div class="tool-main">
-              <span class="icon">＋</span>
-              <span class="label">Add</span>
-            </div>
-            <div class="palette" aria-label="Choose shape">
-              <button data-tool="circle" class="chip">Circle</button>
-              <button data-tool="rectangle" class="chip">Rect</button>
-              <button data-tool="polygon" class="chip">Poly</button>
-              <button data-tool="sensor" class="chip ghost">Sensor</button>
-            </div>
+  <div class="layout">
+    <div class="panel">
+      <div class="controls">
+        <div class="control-group">
+          <div class="group-title">Simulation</div>
+          <div class="slider-row">
+            <label for="stiffness">Stiffness</label>
+            <input id="stiffness" type="range" min="0.15" max="1" step="0.01" value="0.9">
+            <span class="value" id="stiffnessValue">0.90</span>
           </div>
-          <button data-tool="wall" class="tool">
-            <span class="icon">▭</span>
-            <span class="label">Wall</span>
-          </button>
-          <button data-tool="constraint" class="tool">
-            <span class="icon">⤷</span>
-            <span class="label">Constraint</span>
-          </button>
-          <button data-action="delete" class="tool danger">
-            <span class="icon">⌫</span>
-            <span class="label">Erase</span>
-          </button>
-          <button data-action="reset" class="tool ghost">
-            <span class="icon">↺</span>
-            <span class="label">Reset</span>
-          </button>
-        </div>
-      </div>
-
-      <aside class="inspector hidden" id="inspector">
-        <div class="inspector-header">
-          <div>
-            <div class="eyebrow">Inspector</div>
-            <div id="inspectorTitle" class="title">Nothing selected</div>
+          <div class="slider-row">
+            <label for="gravity">Gravity</label>
+            <input id="gravity" type="range" min="-1" max="2" step="0.05" value="1">
+            <span class="value" id="gravityValue">1.00</span>
           </div>
-          <button id="closeInspector" class="ghost-btn">×</button>
-        </div>
-
-        <details class="section" open>
-          <summary class="section-title">Type & Shape</summary>
-          <div class="pill-row" id="bodyTypePills">
-            <button data-type="dynamic" class="pill active">Dynamic</button>
-            <button data-type="static" class="pill">Static</button>
-            <button data-type="sensor" class="pill">Sensor</button>
+          <div class="slider-row">
+            <label for="friction">Friction</label>
+            <input id="friction" type="range" min="0" max="1" step="0.02" value="0.15">
+            <span class="value" id="frictionValue">0.15</span>
           </div>
-          <div class="pill-row" id="shapePills">
-            <button data-shape="circle" class="pill active">Circle</button>
-            <button data-shape="rectangle" class="pill">Rectangle</button>
-            <button data-shape="polygon" class="pill">Polygon</button>
-          </div>
-          <div class="field-row">
-            <label>Sides (polygon)</label>
-            <input id="polygonSides" type="range" min="3" max="8" value="5">
-            <span class="value" id="polygonSidesValue">5</span>
-          </div>
-          <div class="field-row checkbox">
-            <label><input type="checkbox" id="lockToggle"> Lock from drag</label>
-          </div>
-        </details>
-
-        <details class="section" open>
-          <summary class="section-title">Behavior</summary>
-          <div class="pill-row" id="behaviorPresets"></div>
-          <div class="field-row">
-            <label>Bounciness</label>
-            <input id="restitution" type="range" min="0" max="1" step="0.01" value="0.2">
-            <span class="value" id="restitutionValue">0.20</span>
-          </div>
-          <div class="field-row">
-            <label>Slippery</label>
-            <input id="friction" type="range" min="0" max="1" step="0.01" value="0.1">
-            <span class="value" id="frictionValue">0.10</span>
-          </div>
-          <div class="field-row">
-            <label>Air Drag</label>
-            <input id="air" type="range" min="0" max="0.2" step="0.001" value="0.01">
+          <div class="slider-row">
+            <label for="air">Air Drag</label>
+            <input id="air" type="range" min="0" max="0.12" step="0.002" value="0.01">
             <span class="value" id="airValue">0.010</span>
           </div>
-          <div class="field-row">
-            <label>Weight</label>
-            <input id="density" type="range" min="0.0005" max="0.01" step="0.0005" value="0.001">
-            <span class="value" id="densityValue">0.001</span>
+          <div class="slider-row">
+            <label for="resolution">Mesh</label>
+            <input id="resolution" type="range" min="8" max="38" step="1" value="22">
+            <span class="value" id="resolutionValue">22×16</span>
           </div>
-          <details class="advanced">
-            <summary>Advanced</summary>
-            <div class="field-row">
-              <label>Static friction</label>
-              <input id="frictionStatic" type="range" min="0" max="1" step="0.01" value="0.5">
-              <span class="value" id="frictionStaticValue">0.50</span>
-            </div>
-          </details>
-        </details>
-
-        <details class="section" open>
-          <summary class="section-title">Appearance</summary>
-          <div class="pill-row" id="visualPresets"></div>
-          <div class="pill-row" id="renderModes">
-            <button data-render="solid" class="pill active">Solid</button>
-            <button data-render="outline" class="pill">Outline</button>
-            <button data-render="gradient" class="pill">Gradient</button>
+          <div class="row">
+            <button id="resetBtn">Reset cloth</button>
+            <button id="repinBtn" class="secondary">Repin corners</button>
           </div>
-          <div class="field-row">
-            <label>Fill</label>
-            <input id="fill" type="color" value="#4f46e5">
-          </div>
-          <div class="field-row">
-            <label>Stroke</label>
-            <input id="stroke" type="color" value="#111827">
-          </div>
-          <div class="field-row">
-            <label>Stroke Width</label>
-            <input id="strokeWidth" type="range" min="0" max="8" step="0.5" value="2">
-            <span class="value" id="strokeWidthValue">2.0</span>
-          </div>
-          <div class="field-row">
-            <label>Opacity</label>
-            <input id="opacity" type="range" min="0.1" max="1" step="0.05" value="1">
-            <span class="value" id="opacityValue">1.00</span>
-          </div>
-        </details>
-
-        <details class="section" open>
-          <summary class="section-title">Actions</summary>
-          <div class="pill-row stack">
-            <button data-action="duplicate" class="pill pill-ghost">Duplicate</button>
-            <button data-action="delete" class="pill pill-danger">Erase</button>
-            <button id="quickReset" class="pill">Reset world</button>
-          </div>
-          <p class="muted small">Pro-tip: drag with a gentle spring, long-press sliders for numeric input.</p>
-        </details>
-      </aside>
-    </div>
-  </div>
-
-  <div id="saveDialog" class="dialog hidden">
-    <div class="dialog-content">
-      <div class="dialog-header">
-        <div>
-          <div class="eyebrow">Scene</div>
-          <div class="title">Copy & Save</div>
         </div>
-        <button id="closeDialog" class="ghost-btn">×</button>
+
+        <div class="control-group">
+          <div class="group-title">Wind & turbulence</div>
+          <div class="slider-row">
+            <label for="wind">Wind strength</label>
+            <input id="wind" type="range" min="0" max="0.006" step="0.0002" value="0.0025">
+            <span class="value" id="windValue">0.0025</span>
+          </div>
+          <div class="slider-row">
+            <label for="turbulence">Turbulence</label>
+            <input id="turbulence" type="range" min="0" max="5" step="0.1" value="2.2">
+            <span class="value" id="turbulenceValue">2.2</span>
+          </div>
+          <div class="row">
+            <button id="directionBtn">Direction: →</button>
+            <button id="gustBtn" class="secondary">Gust now</button>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <div class="group-title">Texture & stickers</div>
+          <div class="row">
+            <label class="file-label">Upload cloth texture<input type="file" id="textureInput" accept="image/png,image/jpeg"></label>
+            <button id="clearTexture" class="secondary">Clear texture</button>
+          </div>
+          <div class="row">
+            <label class="file-label">Add sticker (PNG)<input type="file" id="stickerInput" accept="image/png"></label>
+            <button id="clearStickers" class="secondary">Clear stickers</button>
+          </div>
+          <div class="slider-row">
+            <label for="stickerSize">Sticker size</label>
+            <input id="stickerSize" type="range" min="0.06" max="0.5" step="0.01" value="0.18">
+            <span class="value" id="stickerSizeValue">18%</span>
+          </div>
+          <div class="note">Click the cloth to place the next uploaded sticker. Stickers ride the mesh just like the base texture.</div>
+        </div>
+
+        <div class="control-group">
+          <div class="group-title">Interaction modes</div>
+          <div class="row">
+            <button id="dragMode" class="toggled">Grab cloth</button>
+            <button id="scissorMode" class="secondary">Scissor mode</button>
+            <button id="pinMode" class="secondary">Pin / Unpin</button>
+          </div>
+          <div class="note">Drag to tug the cloth. In scissor mode, drag across lines to cut them. Pin mode lets you toggle individual points.</div>
+        </div>
+
+        <div class="control-group legend">
+          • Texture hides the wireframe and uses affine mapping per triangle.<br>
+          • Constraints auto-tear if stretched too far.<br>
+          • Use higher mesh density for softer folds, lower for speed.
+        </div>
       </div>
-      <textarea id="sceneText" readonly></textarea>
-      <button id="copyScene" class="primary">Copy JSON</button>
+    </div>
+
+    <div class="canvas-wrap panel">
+      <canvas id="clothCanvas"></canvas>
+      <div class="hud">
+        <div class="pill wind-indicator"><span id="windArrow">→</span> <span id="windReadout">0.0</span></div>
+        <div class="pill" id="modeLabel">Mode: Grab</div>
+      </div>
     </div>
   </div>
 
-  <script type="module" src="./src/main.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.20.0/matter.min.js" integrity="sha512-AWdU5Z6PxSIMcZ9hzu7H4qQcjOc0GwjfMvtL1Rt2PNQVGVvCr0Ur5GMEhTZS7dZsk3jxFFfUVhEPRIM3ytTs9w==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script>
+    const { Engine, World, Bodies, Body, Constraint, Composite, Mouse, MouseConstraint, Runner, Vector } = Matter;
+
+    const canvas = document.getElementById('clothCanvas');
+    const ctx = canvas.getContext('2d');
+    const engine = Engine.create({ enableSleeping: false });
+    const runner = Runner.create();
+
+    let clothCols = 22;
+    let clothRows = 16;
+    let spacing = 24;
+    let particles = [];
+    let springs = [];
+    let mouseConstraint;
+    let baseTexture = null;
+    let showTexture = false;
+    let stickerQueue = null;
+    let stickers = [];
+    let gustImpulse = 0;
+
+    const compositeTexture = document.createElement('canvas');
+    compositeTexture.width = 1024;
+    compositeTexture.height = 1024;
+    const compositeCtx = compositeTexture.getContext('2d');
+
+    const ui = {
+      stiffness: document.getElementById('stiffness'),
+      gravity: document.getElementById('gravity'),
+      friction: document.getElementById('friction'),
+      air: document.getElementById('air'),
+      resolution: document.getElementById('resolution'),
+      wind: document.getElementById('wind'),
+      turbulence: document.getElementById('turbulence'),
+      directionBtn: document.getElementById('directionBtn'),
+      gustBtn: document.getElementById('gustBtn'),
+      resetBtn: document.getElementById('resetBtn'),
+      repinBtn: document.getElementById('repinBtn'),
+      textureInput: document.getElementById('textureInput'),
+      stickerInput: document.getElementById('stickerInput'),
+      clearTexture: document.getElementById('clearTexture'),
+      clearStickers: document.getElementById('clearStickers'),
+      stickerSize: document.getElementById('stickerSize'),
+      dragMode: document.getElementById('dragMode'),
+      scissorMode: document.getElementById('scissorMode'),
+      pinMode: document.getElementById('pinMode'),
+      values: {
+        stiffness: document.getElementById('stiffnessValue'),
+        gravity: document.getElementById('gravityValue'),
+        friction: document.getElementById('frictionValue'),
+        air: document.getElementById('airValue'),
+        resolution: document.getElementById('resolutionValue'),
+        wind: document.getElementById('windValue'),
+        turbulence: document.getElementById('turbulenceValue'),
+        stickerSize: document.getElementById('stickerSizeValue')
+      },
+      windArrow: document.getElementById('windArrow'),
+      windReadout: document.getElementById('windReadout'),
+      modeLabel: document.getElementById('modeLabel')
+    };
+
+    let direction = 1;
+    let mode = 'drag'; // drag | scissor | pin
+    let scissorActive = false;
+    let lastPointer = null;
+    let cutting = false;
+    let perlinSeed = Math.random() * 1000;
+
+    function resizeCanvas() {
+      const rect = canvas.parentElement.getBoundingClientRect();
+      canvas.width = rect.width;
+      canvas.height = rect.height;
+    }
+
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    function makeParticle(x, y, pinned = false) {
+      const body = Bodies.circle(x, y, 4, {
+        friction: parseFloat(ui.friction.value),
+        frictionStatic: 0.1,
+        frictionAir: parseFloat(ui.air.value),
+        restitution: 0.02,
+        mass: 0.02,
+        render: { visible: false }
+      });
+      Body.setStatic(body, pinned);
+      body.plugin = { pinned };
+      return body;
+    }
+
+    function addSpring(a, b) {
+      const rest = Vector.magnitude(Vector.sub(a.position, b.position));
+      const spring = Constraint.create({
+        bodyA: a,
+        bodyB: b,
+        length: rest,
+        stiffness: parseFloat(ui.stiffness.value),
+        damping: 0.08,
+        render: { visible: false }
+      });
+      spring.meta = { rest };
+      springs.push(spring);
+      Composite.add(engine.world, spring);
+    }
+
+    function createCloth() {
+      Composite.clear(engine.world, false);
+      particles = [];
+      springs = [];
+
+      const cols = clothCols;
+      const rows = clothRows;
+      const width = (cols - 1) * spacing;
+      const startX = canvas.width / 2 - width / 2;
+      const startY = 70;
+
+      for (let y = 0; y < rows; y++) {
+        const row = [];
+        for (let x = 0; x < cols; x++) {
+          const pinned = y === 0 && (x === 0 || x === cols - 1);
+          const p = makeParticle(startX + x * spacing, startY + y * spacing, pinned);
+          row.push(p);
+          Composite.add(engine.world, p);
+        }
+        particles.push(row);
+      }
+
+      for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) {
+          if (x > 0) addSpring(particles[y][x], particles[y][x - 1]);
+          if (y > 0) addSpring(particles[y][x], particles[y - 1][x]);
+          if (x > 0 && y > 0) addSpring(particles[y][x], particles[y - 1][x - 1]);
+          if (x < cols - 1 && y > 0) addSpring(particles[y][x], particles[y - 1][x + 1]);
+        }
+      }
+
+      World.add(engine.world, mouseConstraint);
+    }
+
+    function updateSpringStiffness() {
+      const k = parseFloat(ui.stiffness.value);
+      springs.forEach(s => s.stiffness = k);
+      ui.values.stiffness.textContent = k.toFixed(2);
+    }
+
+    function updateBodyProps() {
+      const friction = parseFloat(ui.friction.value);
+      const air = parseFloat(ui.air.value);
+      particles.flat().forEach(p => {
+        p.friction = friction;
+        p.frictionStatic = Math.min(1, friction + 0.1);
+        p.frictionAir = air;
+      });
+      ui.values.friction.textContent = friction.toFixed(2);
+      ui.values.air.textContent = air.toFixed(3);
+    }
+
+    function updateGravity() {
+      const g = parseFloat(ui.gravity.value);
+      engine.world.gravity.y = g;
+      ui.values.gravity.textContent = g.toFixed(2);
+    }
+
+    function updateResolution() {
+      clothCols = parseInt(ui.resolution.value, 10);
+      clothRows = Math.max(6, Math.round(clothCols * 0.73));
+      ui.values.resolution.textContent = `${clothCols}×${clothRows}`;
+      createCloth();
+    }
+
+    function toggleMode(next) {
+      mode = next;
+      ui.dragMode.classList.toggle('toggled', mode === 'drag');
+      ui.scissorMode.classList.toggle('toggled', mode === 'scissor');
+      ui.pinMode.classList.toggle('toggled', mode === 'pin');
+      ui.modeLabel.textContent = `Mode: ${mode === 'drag' ? 'Grab' : mode === 'scissor' ? 'Scissor' : 'Pin'}`;
+      if (mode === 'scissor' || mode === 'pin') {
+        World.remove(engine.world, mouseConstraint);
+      } else if (!engine.world.constraints.includes(mouseConstraint.constraint)) {
+        World.add(engine.world, mouseConstraint);
+      }
+    }
+
+    function perlin(x) {
+      const X = Math.floor(x) & 255;
+      const xf = x - Math.floor(x);
+      const u = xf * xf * xf * (xf * (xf * 6 - 15) + 10);
+      const grad = (hash, t) => ((hash & 1) ? t : -t);
+      const p = perlin.p;
+      const a = p[X];
+      const b = p[X + 1];
+      return (1 - u) * grad(a, xf) + u * grad(b, xf - 1);
+    }
+    perlin.p = new Uint8Array(512);
+    (function reseed() {
+      const p = new Uint8Array(256);
+      for (let i = 0; i < 256; i++) p[i] = i;
+      for (let i = 255; i > 0; i--) {
+        const n = Math.floor(Math.random() * (i + 1));
+        [p[i], p[n]] = [p[n], p[i]];
+      }
+      for (let i = 0; i < 512; i++) perlin.p[i] = p[i & 255];
+    })();
+
+    function applyWind() {
+      const base = parseFloat(ui.wind.value);
+      const turbulence = parseFloat(ui.turbulence.value);
+      const t = performance.now() * 0.001 * turbulence + perlinSeed;
+      const noise = 0.5 + 0.5 * perlin(t);
+      const gust = gustImpulse;
+      const strength = (base + gust) * (0.4 + 0.6 * noise);
+      gustImpulse = Math.max(0, gustImpulse * 0.96 - 0.00001);
+      particles.flat().forEach(p => {
+        if (p.isStatic) return;
+        const force = { x: strength * direction, y: (noise - 0.5) * 0.0005 };
+        Body.applyForce(p, p.position, force);
+      });
+      ui.windReadout.textContent = strength.toFixed(4);
+      ui.windArrow.textContent = direction === 1 ? '→' : '←';
+    }
+
+    function drawConstraintLines() {
+      ctx.strokeStyle = 'rgba(125,211,252,0.55)';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      springs.forEach(s => {
+        if (!s.bodyA || !s.bodyB) return;
+        ctx.moveTo(s.bodyA.position.x, s.bodyA.position.y);
+        ctx.lineTo(s.bodyB.position.x, s.bodyB.position.y);
+      });
+      ctx.stroke();
+
+      particles.flat().forEach(p => {
+        ctx.beginPath();
+        ctx.fillStyle = p.isStatic ? '#fbbf24' : '#c7d2fe';
+        ctx.arc(p.position.x, p.position.y, p.isStatic ? 4.5 : 3, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    function prepareCompositeTexture() {
+      compositeCtx.clearRect(0, 0, compositeTexture.width, compositeTexture.height);
+      const grd = compositeCtx.createLinearGradient(0, 0, compositeTexture.width, compositeTexture.height);
+      grd.addColorStop(0, '#1f2937');
+      grd.addColorStop(1, '#0f172a');
+      compositeCtx.fillStyle = grd;
+      compositeCtx.fillRect(0, 0, compositeTexture.width, compositeTexture.height);
+      if (baseTexture) {
+        const ratio = Math.max(compositeTexture.width / baseTexture.width, compositeTexture.height / baseTexture.height);
+        const w = baseTexture.width * ratio;
+        const h = baseTexture.height * ratio;
+        const x = (compositeTexture.width - w) / 2;
+        const y = (compositeTexture.height - h) / 2;
+        compositeCtx.drawImage(baseTexture, x, y, w, h);
+      }
+      stickers.forEach(s => {
+        if (!s.image.complete) return;
+        const size = compositeTexture.width * s.size;
+        const x = s.u * compositeTexture.width - size / 2;
+        const y = s.v * compositeTexture.height - size / 2;
+        compositeCtx.drawImage(s.image, x, y, size, size * (s.image.height / s.image.width));
+      });
+    }
+
+    function drawTexturedTriangle(p0, p1, p2, uv0, uv1, uv2, image) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(p0.x, p0.y);
+      ctx.lineTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.closePath();
+      ctx.clip();
+
+      const denom = (uv0.u * (uv1.v - uv2.v) + uv1.u * (uv2.v - uv0.v) + uv2.u * (uv0.v - uv1.v));
+      const a = (p0.x * (uv1.v - uv2.v) + p1.x * (uv2.v - uv0.v) + p2.x * (uv0.v - uv1.v)) / denom;
+      const b = (p0.x * (uv2.u - uv1.u) + p1.x * (uv0.u - uv2.u) + p2.x * (uv1.u - uv0.u)) / denom;
+      const c = (p0.x * (uv1.u * uv2.v - uv2.u * uv1.v) + p1.x * (uv2.u * uv0.v - uv0.u * uv2.v) + p2.x * (uv0.u * uv1.v - uv1.u * uv0.v)) / denom;
+      const d = (p0.y * (uv1.v - uv2.v) + p1.y * (uv2.v - uv0.v) + p2.y * (uv0.v - uv1.v)) / denom;
+      const e = (p0.y * (uv2.u - uv1.u) + p1.y * (uv0.u - uv2.u) + p2.y * (uv1.u - uv0.u)) / denom;
+      const f = (p0.y * (uv1.u * uv2.v - uv2.u * uv1.v) + p1.y * (uv2.u * uv0.v - uv0.u * uv2.v) + p2.y * (uv0.u * uv1.v - uv1.u * uv0.v)) / denom;
+
+      ctx.transform(a, d, b, e, c, f);
+      ctx.drawImage(image, 0, 0);
+      ctx.restore();
+    }
+
+    function drawTextureMesh() {
+      if (!showTexture || !baseTexture) {
+        drawConstraintLines();
+        return;
+      }
+      const img = compositeTexture;
+      const cols = clothCols - 1;
+      const rows = clothRows - 1;
+      for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) {
+          const p00 = particles[y][x].position;
+          const p10 = particles[y][x + 1].position;
+          const p01 = particles[y + 1][x].position;
+          const p11 = particles[y + 1][x + 1].position;
+
+          const uv00 = { u: (x / (clothCols - 1)) * img.width, v: (y / (clothRows - 1)) * img.height };
+          const uv10 = { u: ((x + 1) / (clothCols - 1)) * img.width, v: uv00.v };
+          const uv01 = { u: uv00.u, v: ((y + 1) / (clothRows - 1)) * img.height };
+          const uv11 = { u: uv10.u, v: uv01.v };
+
+          drawTexturedTriangle(p00, p10, p01, uv00, uv10, uv01, img);
+          drawTexturedTriangle(p11, p01, p10, uv11, uv01, uv10, img);
+        }
+      }
+    }
+
+    function tearSprings() {
+      springs = springs.filter(s => {
+        if (!s.bodyA || !s.bodyB) return false;
+        const dist = Vector.magnitude(Vector.sub(s.bodyA.position, s.bodyB.position));
+        if (dist > s.meta.rest * 2.1) {
+          Composite.remove(engine.world, s);
+          return false;
+        }
+        return true;
+      });
+    }
+
+    function segmentIntersects(a, b, c, d) {
+      const cross = (p, q, r) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+      const d1 = cross(a, b, c);
+      const d2 = cross(a, b, d);
+      const d3 = cross(c, d, a);
+      const d4 = cross(c, d, b);
+      return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+    }
+
+    function cutBetween(p1, p2) {
+      springs = springs.filter(s => {
+        if (!s.bodyA || !s.bodyB) return true;
+        const a = s.bodyA.position;
+        const b = s.bodyB.position;
+        if (segmentIntersects(p1, p2, a, b)) {
+          Composite.remove(engine.world, s);
+          return false;
+        }
+        return true;
+      });
+    }
+
+    function togglePinAt(point) {
+      let closest = null;
+      let min = 18;
+      particles.flat().forEach(p => {
+        const d = Vector.magnitude(Vector.sub(point, p.position));
+        if (d < min) {
+          min = d; closest = p;
+        }
+      });
+      if (!closest) return;
+      const pinned = !closest.isStatic;
+      Body.setStatic(closest, pinned);
+      closest.plugin.pinned = pinned;
+    }
+
+    function placeSticker(point) {
+      if (!stickerQueue || !baseTexture) return;
+      const img = stickerQueue;
+      const cols = clothCols - 1;
+      const rows = clothRows - 1;
+      for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) {
+          const p00 = particles[y][x].position;
+          const p10 = particles[y][x + 1].position;
+          const p01 = particles[y + 1][x].position;
+          const p11 = particles[y + 1][x + 1].position;
+
+          const triA = [p00, p10, p01];
+          const triB = [p11, p01, p10];
+          const target = pointInTriangle(point, triA) ? { tri: triA, uv: [
+            { u: x / (clothCols - 1), v: y / (clothRows - 1) },
+            { u: (x + 1) / (clothCols - 1), v: y / (clothRows - 1) },
+            { u: x / (clothCols - 1), v: (y + 1) / (clothRows - 1) }
+          ] } : pointInTriangle(point, triB) ? { tri: triB, uv: [
+            { u: (x + 1) / (clothCols - 1), v: (y + 1) / (clothRows - 1) },
+            { u: x / (clothCols - 1), v: (y + 1) / (clothRows - 1) },
+            { u: (x + 1) / (clothCols - 1), v: y / (clothRows - 1) }
+          ] } : null;
+          if (target) {
+            const bary = barycentric(point, target.tri[0], target.tri[1], target.tri[2]);
+            const uv = {
+              u: target.uv[0].u * bary.x + target.uv[1].u * bary.y + target.uv[2].u * bary.z,
+              v: target.uv[0].v * bary.x + target.uv[1].v * bary.y + target.uv[2].v * bary.z
+            };
+            stickers.push({ image: img, u: uv.u, v: uv.v, size: parseFloat(ui.stickerSize.value) });
+            stickerQueue = null;
+            prepareCompositeTexture();
+            return;
+          }
+        }
+      }
+    }
+
+    function barycentric(p, a, b, c) {
+      const v0 = { x: b.x - a.x, y: b.y - a.y };
+      const v1 = { x: c.x - a.x, y: c.y - a.y };
+      const v2 = { x: p.x - a.x, y: p.y - a.y };
+      const d00 = v0.x * v0.x + v0.y * v0.y;
+      const d01 = v0.x * v1.x + v0.y * v1.y;
+      const d11 = v1.x * v1.x + v1.y * v1.y;
+      const d20 = v2.x * v0.x + v2.y * v0.y;
+      const d21 = v2.x * v1.x + v2.y * v1.y;
+      const denom = d00 * d11 - d01 * d01;
+      const v = (d11 * d20 - d01 * d21) / denom;
+      const w = (d00 * d21 - d01 * d20) / denom;
+      const u = 1 - v - w;
+      return { x: u, y: v, z: w };
+    }
+
+    function pointInTriangle(p, tri) {
+      const [a, b, c] = tri;
+      const area = (p1, p2, p3) => (p1.x * (p2.y - p3.y) + p2.x * (p3.y - p1.y) + p3.x * (p1.y - p2.y));
+      const A = area(a, b, c);
+      const A1 = area(p, b, c);
+      const A2 = area(a, p, c);
+      const A3 = area(a, b, p);
+      return Math.sign(A) === Math.sign(A1) && Math.sign(A) === Math.sign(A2) && Math.sign(A) === Math.sign(A3);
+    }
+
+    const mouse = Mouse.create(canvas);
+    mouseConstraint = MouseConstraint.create(engine, {
+      mouse,
+      constraint: {
+        stiffness: 0.15,
+        render: { visible: false }
+      }
+    });
+
+    canvas.addEventListener('pointerdown', e => {
+      const pos = pointerPos(e);
+      cutting = true;
+      lastPointer = pos;
+      if (mode === 'pin') togglePinAt(pos);
+    });
+
+    canvas.addEventListener('pointermove', e => {
+      const pos = pointerPos(e);
+      if (mode === 'scissor' && cutting && lastPointer) {
+        cutBetween(lastPointer, pos);
+      }
+      lastPointer = pos;
+    });
+
+    canvas.addEventListener('pointerup', e => {
+      const pos = pointerPos(e);
+      if (mode === 'pin') togglePinAt(pos);
+      if (mode === 'drag' && stickerQueue) placeSticker(pos);
+      cutting = false;
+    });
+
+    function pointerPos(e) {
+      const rect = canvas.getBoundingClientRect();
+      return { x: (e.clientX - rect.left) * (canvas.width / rect.width), y: (e.clientY - rect.top) * (canvas.height / rect.height) };
+    }
+
+    function animate() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawTextureMesh();
+      Runner.tick(runner, engine, 1000 / 60);
+      tearSprings();
+      applyWind();
+      requestAnimationFrame(animate);
+    }
+
+    function initUI() {
+      ui.stiffness.addEventListener('input', updateSpringStiffness);
+      ui.gravity.addEventListener('input', updateGravity);
+      ui.friction.addEventListener('input', updateBodyProps);
+      ui.air.addEventListener('input', updateBodyProps);
+      ui.resolution.addEventListener('change', updateResolution);
+      ui.wind.addEventListener('input', () => ui.values.wind.textContent = parseFloat(ui.wind.value).toFixed(4));
+      ui.turbulence.addEventListener('input', () => ui.values.turbulence.textContent = parseFloat(ui.turbulence.value).toFixed(1));
+      ui.stickerSize.addEventListener('input', () => ui.values.stickerSize.textContent = `${Math.round(parseFloat(ui.stickerSize.value) * 100)}%`);
+      ui.resetBtn.addEventListener('click', () => createCloth());
+      ui.repinBtn.addEventListener('click', () => {
+        particles[0][0] && Body.setStatic(particles[0][0], true);
+        particles[0][clothCols - 1] && Body.setStatic(particles[0][clothCols - 1], true);
+      });
+      ui.directionBtn.addEventListener('click', () => {
+        direction *= -1;
+        ui.directionBtn.textContent = direction === 1 ? 'Direction: →' : 'Direction: ←';
+      });
+      ui.gustBtn.addEventListener('click', () => { gustImpulse = 0.004; });
+      ui.dragMode.addEventListener('click', () => toggleMode('drag'));
+      ui.scissorMode.addEventListener('click', () => toggleMode(mode === 'scissor' ? 'drag' : 'scissor'));
+      ui.pinMode.addEventListener('click', () => toggleMode(mode === 'pin' ? 'drag' : 'pin'));
+      ui.clearTexture.addEventListener('click', () => { baseTexture = null; showTexture = false; });
+      ui.clearStickers.addEventListener('click', () => { stickers = []; stickerQueue = null; prepareCompositeTexture(); });
+
+      ui.textureInput.addEventListener('change', e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const img = new Image();
+        img.onload = () => {
+          baseTexture = img;
+          showTexture = true;
+          prepareCompositeTexture();
+        };
+        img.src = URL.createObjectURL(file);
+      });
+
+      ui.stickerInput.addEventListener('change', e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const img = new Image();
+        img.onload = () => {
+          stickerQueue = img;
+        };
+        img.src = URL.createObjectURL(file);
+      });
+    }
+
+    initUI();
+    World.add(engine.world, mouseConstraint);
+    createCloth();
+    updateSpringStiffness();
+    updateBodyProps();
+    updateGravity();
+    prepareCompositeTexture();
+    animate();
+  </script>
 </body>
 </html>
