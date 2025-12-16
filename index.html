@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Matter Playground</title>
+  <link rel="stylesheet" href="./src/style.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="top-bar">
+      <div class="brand">Matter Playground</div>
+      <div class="actions">
+        <button class="ghost-btn" id="undoBtn" title="Undo (Ctrl+Z)">Undo</button>
+        <button class="ghost-btn" id="redoBtn" title="Redo (Ctrl+Shift+Z)">Redo</button>
+        <button class="ghost-btn" id="saveSceneBtn">Save Scene</button>
+        <label class="file-btn">
+          Load Scene
+          <input type="file" id="loadSceneInput" accept="application/json">
+        </label>
+      </div>
+    </header>
+
+    <div class="canvas-wrapper">
+      <div id="renderHost" class="render-host"></div>
+      <canvas id="ghostCanvas" class="ghost-layer"></canvas>
+
+      <div class="toolbelt" id="toolbelt">
+        <div class="toolbelt-header">
+          <span>Tools</span>
+          <button id="collapseTools" class="ghost-btn">⟷</button>
+        </div>
+        <div class="tool-grid" id="toolButtons">
+          <button data-tool="select" class="tool active">Select</button>
+          <button data-tool="circle" class="tool">Circle</button>
+          <button data-tool="rectangle" class="tool">Rectangle</button>
+          <button data-tool="polygon" class="tool">Polygon</button>
+          <button data-tool="wall" class="tool">Static Wall</button>
+          <button data-tool="sensor" class="tool">Sensor</button>
+          <button data-action="duplicate" class="tool">Duplicate</button>
+          <button data-action="delete" class="tool danger">Delete</button>
+        </div>
+      </div>
+
+      <aside class="inspector hidden" id="inspector">
+        <div class="inspector-header">
+          <div>
+            <div class="eyebrow">Inspector</div>
+            <div id="inspectorTitle" class="title">Nothing selected</div>
+          </div>
+          <button id="closeInspector" class="ghost-btn">×</button>
+        </div>
+
+        <section class="section">
+          <div class="section-title">Type & Shape</div>
+          <div class="pill-row" id="bodyTypePills">
+            <button data-type="dynamic" class="pill active">Dynamic</button>
+            <button data-type="static" class="pill">Static</button>
+            <button data-type="sensor" class="pill">Sensor</button>
+          </div>
+          <div class="pill-row" id="shapePills">
+            <button data-shape="circle" class="pill active">Circle</button>
+            <button data-shape="rectangle" class="pill">Rectangle</button>
+            <button data-shape="polygon" class="pill">Polygon</button>
+          </div>
+          <div class="field-row">
+            <label>Sides (polygon)</label>
+            <input id="polygonSides" type="range" min="3" max="8" value="5">
+            <span class="value" id="polygonSidesValue">5</span>
+          </div>
+          <div class="field-row checkbox">
+            <label><input type="checkbox" id="lockToggle"> Lock from drag</label>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="section-title">Behavior (Physics)</div>
+          <div class="pill-row" id="behaviorPresets"></div>
+          <div class="field-row">
+            <label>Restitution</label>
+            <input id="restitution" type="range" min="0" max="1" step="0.01" value="0.2">
+            <span class="value" id="restitutionValue">0.20</span>
+          </div>
+          <div class="field-row">
+            <label>Friction</label>
+            <input id="friction" type="range" min="0" max="1" step="0.01" value="0.1">
+            <span class="value" id="frictionValue">0.10</span>
+          </div>
+          <div class="field-row">
+            <label>Air Drag</label>
+            <input id="air" type="range" min="0" max="0.2" step="0.001" value="0.01">
+            <span class="value" id="airValue">0.010</span>
+          </div>
+          <div class="field-row">
+            <label>Density</label>
+            <input id="density" type="range" min="0.0005" max="0.01" step="0.0005" value="0.001">
+            <span class="value" id="densityValue">0.001</span>
+          </div>
+          <details class="advanced">
+            <summary>Advanced</summary>
+            <div class="field-row">
+              <label>Static friction</label>
+              <input id="frictionStatic" type="range" min="0" max="1" step="0.01" value="0.5">
+              <span class="value" id="frictionStaticValue">0.50</span>
+            </div>
+          </details>
+        </section>
+
+        <section class="section">
+          <div class="section-title">Appearance</div>
+          <div class="pill-row" id="visualPresets"></div>
+          <div class="pill-row" id="renderModes">
+            <button data-render="solid" class="pill active">Solid</button>
+            <button data-render="outline" class="pill">Outline</button>
+            <button data-render="gradient" class="pill">Gradient</button>
+          </div>
+          <div class="field-row">
+            <label>Fill</label>
+            <input id="fill" type="color" value="#4f46e5">
+          </div>
+          <div class="field-row">
+            <label>Stroke</label>
+            <input id="stroke" type="color" value="#111827">
+          </div>
+          <div class="field-row">
+            <label>Stroke Width</label>
+            <input id="strokeWidth" type="range" min="0" max="8" step="0.5" value="2">
+            <span class="value" id="strokeWidthValue">2.0</span>
+          </div>
+          <div class="field-row">
+            <label>Opacity</label>
+            <input id="opacity" type="range" min="0.1" max="1" step="0.05" value="1">
+            <span class="value" id="opacityValue">1.00</span>
+          </div>
+        </section>
+      </aside>
+    </div>
+  </div>
+
+  <div id="saveDialog" class="dialog hidden">
+    <div class="dialog-content">
+      <div class="dialog-header">
+        <div>
+          <div class="eyebrow">Scene</div>
+          <div class="title">Copy & Save</div>
+        </div>
+        <button id="closeDialog" class="ghost-btn">×</button>
+      </div>
+      <textarea id="sceneText" readonly></textarea>
+      <button id="copyScene" class="primary">Copy JSON</button>
+    </div>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
