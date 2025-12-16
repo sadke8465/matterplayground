@@ -7,17 +7,43 @@
   <link rel="stylesheet" href="./src/style.css">
 </head>
 <body>
-  <div class="app-shell">
+  <div class="app-shell surface-paper">
     <header class="top-bar">
-      <div class="brand">Matter Playground</div>
-      <div class="actions">
-        <button class="ghost-btn" id="undoBtn" title="Undo (Ctrl+Z)">Undo</button>
-        <button class="ghost-btn" id="redoBtn" title="Redo (Ctrl+Shift+Z)">Redo</button>
-        <button class="ghost-btn" id="saveSceneBtn">Save Scene</button>
-        <label class="file-btn">
-          Load Scene
-          <input type="file" id="loadSceneInput" accept="application/json">
-        </label>
+      <div class="brand-block">
+        <div class="brand-mark">◎</div>
+        <div>
+          <div class="brand">Matter Playground</div>
+          <div class="subtitle">Playful physics sketchpad</div>
+        </div>
+      </div>
+      <div class="top-actions">
+        <div class="quiet-group">
+          <button class="quiet-btn" id="playPauseBtn" aria-label="Play or pause">Pause</button>
+          <button class="quiet-btn" id="undoBtn" title="Undo (Ctrl+Z)">Undo</button>
+          <button class="quiet-btn" id="redoBtn" title="Redo (Ctrl+Shift+Z)">Redo</button>
+        </div>
+        <div class="quiet-group">
+          <button class="quiet-btn" id="saveSceneBtn">Save</button>
+          <label class="file-btn" aria-label="Load scene">
+            Load
+            <input type="file" id="loadSceneInput" accept="application/json">
+          </label>
+          <div class="settings">
+            <button class="quiet-btn" id="settingsToggle" aria-haspopup="true">Settings</button>
+            <div class="settings-panel" id="settingsPanel">
+              <div class="panel-title">Workspace</div>
+              <div class="pill-row compact" id="surfaceButtons">
+                <button data-surface="paper" class="pill active">Paper</button>
+                <button data-surface="grid" class="pill">Grid</button>
+                <button data-surface="dark" class="pill">Studio</button>
+              </div>
+              <label class="toggle">
+                <input type="checkbox" id="debugToggle">
+                <span>Debug overlay</span>
+              </label>
+            </div>
+          </div>
+        </div>
       </div>
     </header>
 
@@ -26,19 +52,39 @@
       <canvas id="ghostCanvas" class="ghost-layer"></canvas>
 
       <div class="toolbelt" id="toolbelt">
-        <div class="toolbelt-header">
-          <span>Tools</span>
-          <button id="collapseTools" class="ghost-btn">⟷</button>
-        </div>
-        <div class="tool-grid" id="toolButtons">
-          <button data-tool="select" class="tool active">Select</button>
-          <button data-tool="circle" class="tool">Circle</button>
-          <button data-tool="rectangle" class="tool">Rectangle</button>
-          <button data-tool="polygon" class="tool">Polygon</button>
-          <button data-tool="wall" class="tool">Static Wall</button>
-          <button data-tool="sensor" class="tool">Sensor</button>
-          <button data-action="duplicate" class="tool">Duplicate</button>
-          <button data-action="delete" class="tool danger">Delete</button>
+        <div class="toolbelt-track" id="toolButtons">
+          <button data-tool="select" class="tool active">
+            <span class="icon">◆</span>
+            <span class="label">Select</span>
+          </button>
+          <div class="tool add has-palette" data-tool="rectangle">
+            <div class="tool-main">
+              <span class="icon">＋</span>
+              <span class="label">Add</span>
+            </div>
+            <div class="palette" aria-label="Choose shape">
+              <button data-tool="circle" class="chip">Circle</button>
+              <button data-tool="rectangle" class="chip">Rect</button>
+              <button data-tool="polygon" class="chip">Poly</button>
+              <button data-tool="sensor" class="chip ghost">Sensor</button>
+            </div>
+          </div>
+          <button data-tool="wall" class="tool">
+            <span class="icon">▭</span>
+            <span class="label">Wall</span>
+          </button>
+          <button data-tool="constraint" class="tool">
+            <span class="icon">⤷</span>
+            <span class="label">Constraint</span>
+          </button>
+          <button data-action="delete" class="tool danger">
+            <span class="icon">⌫</span>
+            <span class="label">Erase</span>
+          </button>
+          <button data-action="reset" class="tool ghost">
+            <span class="icon">↺</span>
+            <span class="label">Reset</span>
+          </button>
         </div>
       </div>
 
@@ -51,8 +97,8 @@
           <button id="closeInspector" class="ghost-btn">×</button>
         </div>
 
-        <section class="section">
-          <div class="section-title">Type & Shape</div>
+        <details class="section" open>
+          <summary class="section-title">Type & Shape</summary>
           <div class="pill-row" id="bodyTypePills">
             <button data-type="dynamic" class="pill active">Dynamic</button>
             <button data-type="static" class="pill">Static</button>
@@ -71,18 +117,18 @@
           <div class="field-row checkbox">
             <label><input type="checkbox" id="lockToggle"> Lock from drag</label>
           </div>
-        </section>
+        </details>
 
-        <section class="section">
-          <div class="section-title">Behavior (Physics)</div>
+        <details class="section" open>
+          <summary class="section-title">Behavior</summary>
           <div class="pill-row" id="behaviorPresets"></div>
           <div class="field-row">
-            <label>Restitution</label>
+            <label>Bounciness</label>
             <input id="restitution" type="range" min="0" max="1" step="0.01" value="0.2">
             <span class="value" id="restitutionValue">0.20</span>
           </div>
           <div class="field-row">
-            <label>Friction</label>
+            <label>Slippery</label>
             <input id="friction" type="range" min="0" max="1" step="0.01" value="0.1">
             <span class="value" id="frictionValue">0.10</span>
           </div>
@@ -92,7 +138,7 @@
             <span class="value" id="airValue">0.010</span>
           </div>
           <div class="field-row">
-            <label>Density</label>
+            <label>Weight</label>
             <input id="density" type="range" min="0.0005" max="0.01" step="0.0005" value="0.001">
             <span class="value" id="densityValue">0.001</span>
           </div>
@@ -104,10 +150,10 @@
               <span class="value" id="frictionStaticValue">0.50</span>
             </div>
           </details>
-        </section>
+        </details>
 
-        <section class="section">
-          <div class="section-title">Appearance</div>
+        <details class="section" open>
+          <summary class="section-title">Appearance</summary>
           <div class="pill-row" id="visualPresets"></div>
           <div class="pill-row" id="renderModes">
             <button data-render="solid" class="pill active">Solid</button>
@@ -132,7 +178,17 @@
             <input id="opacity" type="range" min="0.1" max="1" step="0.05" value="1">
             <span class="value" id="opacityValue">1.00</span>
           </div>
-        </section>
+        </details>
+
+        <details class="section" open>
+          <summary class="section-title">Actions</summary>
+          <div class="pill-row stack">
+            <button data-action="duplicate" class="pill pill-ghost">Duplicate</button>
+            <button data-action="delete" class="pill pill-danger">Erase</button>
+            <button id="quickReset" class="pill">Reset world</button>
+          </div>
+          <p class="muted small">Pro-tip: drag with a gentle spring, long-press sliders for numeric input.</p>
+        </details>
       </aside>
     </div>
   </div>
