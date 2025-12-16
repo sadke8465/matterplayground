@@ -10,7 +10,8 @@ import {
   MouseConstraint,
   Events,
   Bounds,
-  Vertices
+  Vertices,
+  Constraint
 } from 'https://cdn.skypack.dev/matter-js';
 
 const PHYSICS_PRESETS = {
@@ -49,21 +50,26 @@ const TOOL_HINTS = {
   circle: 'Click to drop a circle, or drag to size it.',
   rectangle: 'Click to add, drag to define width & height.',
   polygon: 'Drag to size polygon. Adjust sides in inspector.',
-  wall: 'Drag to create static wall.',
-  sensor: 'Drag to add a ghost sensor (no collisions).'
+  wall: 'Drag to place a static wall that holds the play area.',
+  sensor: 'Drag to add a ghost sensor (no collisions).',
+  constraint: 'Tap two bodies to link them with a soft constraint.'
 };
+
+const DRAW_TOOLS = ['circle', 'rectangle', 'polygon', 'wall', 'sensor'];
 
 class Playground {
   constructor() {
     this.engine = Engine.create({ enableSleeping: true });
     this.runner = Runner.create();
+    this.appShell = document.querySelector('.app-shell');
+    this.topBar = document.querySelector('.top-bar');
     this.renderHost = document.getElementById('renderHost');
     this.render = Render.create({
       element: this.renderHost,
       engine: this.engine,
       options: {
         width: window.innerWidth,
-        height: window.innerHeight - 56,
+        height: this.canvasHeight(),
         wireframes: false,
         background: 'transparent',
         pixelRatio: window.devicePixelRatio
@@ -84,14 +90,20 @@ class Playground {
     World.add(this.engine.world, this.mouseConstraint);
 
     this.objects = [];
+    this.links = [];
     this.bodyMap = new Map();
+    this.linkMap = new Map();
     this.selectedIds = [];
     this.tool = 'select';
     this.isDrawing = false;
+    this.constraintAnchor = null;
     this.dragStart = null;
     this.history = [];
     this.historyIndex = -1;
     this.nextId = 1;
+    this.nextLinkId = 1;
+    this.paused = false;
+    this.setSurface('paper');
 
     this.bindUI();
     this.resize();
@@ -105,8 +117,13 @@ class Playground {
     Runner.run(this.runner, this.engine);
   }
 
+  canvasHeight() {
+    const barHeight = this.topBar?.offsetHeight || 0;
+    return window.innerHeight - barHeight;
+  }
+
   resize() {
-    const height = window.innerHeight - 56;
+    const height = this.canvasHeight();
     this.render.canvas.width = window.innerWidth;
     this.render.canvas.height = height;
     this.ghostCanvas.width = window.innerWidth;
@@ -115,35 +132,43 @@ class Playground {
       min: { x: 0, y: 0 },
       max: { x: window.innerWidth, y: height }
     });
+    this.addBounds();
   }
 
   addBounds() {
+    if (this.bounds) {
+      this.bounds.forEach((wall) => World.remove(this.engine.world, wall));
+    }
     const w = window.innerWidth;
-    const h = window.innerHeight - 56;
+    const h = this.canvasHeight();
     const thickness = 80;
-    const walls = [
+    this.bounds = [
       Bodies.rectangle(w / 2, h + thickness / 2, w, thickness, { isStatic: true }),
       Bodies.rectangle(w / 2, -thickness / 2, w, thickness, { isStatic: true }),
       Bodies.rectangle(-thickness / 2, h / 2, thickness, h, { isStatic: true }),
       Bodies.rectangle(w + thickness / 2, h / 2, thickness, h, { isStatic: true })
     ];
-    World.add(this.engine.world, walls);
+    World.add(this.engine.world, this.bounds);
   }
 
   registerEvents() {
     window.addEventListener('resize', () => this.resize());
 
     Events.on(this.mouseConstraint, 'mousedown', (event) => {
-      if (this.tool !== 'select') return;
       const body = event.source.body || this.getBodyAtPointer(event.mouse.position);
-      if (body && body.plugin && body.plugin.modelId) {
-        this.handleSelection(body.plugin.modelId, event.mouse.sourceEvents.mousedown.shiftKey);
-      } else {
-        this.clearSelection();
+      if (this.tool === 'select') {
+        if (body && body.plugin && body.plugin.modelId) {
+          this.handleSelection(body.plugin.modelId, event.mouse.sourceEvents.mousedown.shiftKey);
+        } else {
+          this.clearSelection();
+        }
+      } else if (this.tool === 'constraint') {
+        this.handleConstraintPoint(body);
       }
     });
 
     Events.on(this.mouseConstraint, 'startdrag', (event) => {
+      if (this.tool !== 'select') return;
       const body = event.body;
       if (body?.plugin?.locked) {
         this.mouseConstraint.body = null;
@@ -161,6 +186,7 @@ class Playground {
   bindUI() {
     this.inspector = document.getElementById('inspector');
     this.inspectorTitle = document.getElementById('inspectorTitle');
+    this.toolbelt = document.getElementById('toolbelt');
 
     document.getElementById('toolButtons').addEventListener('click', (e) => {
       const button = e.target.closest('button');
@@ -168,24 +194,38 @@ class Playground {
       const tool = button.dataset.tool;
       if (tool) {
         this.tool = tool;
+        this.constraintAnchor = null;
         this.updateToolButtons(tool);
-        this.showHint(TOOL_HINTS[tool]);
+        this.showHint(TOOL_HINTS[tool] || 'Sketch freely with physics.');
       }
       const action = button.dataset.action;
       if (action === 'duplicate') this.duplicateSelection();
       if (action === 'delete') this.deleteSelection();
+      if (action === 'reset') this.resetWorld();
     });
 
-    document.getElementById('collapseTools').addEventListener('click', () => {
-      document.getElementById('toolbelt').classList.toggle('collapsed');
-    });
-
+    document.getElementById('quickReset').addEventListener('click', () => this.resetWorld());
     document.getElementById('undoBtn').addEventListener('click', () => this.undo());
     document.getElementById('redoBtn').addEventListener('click', () => this.redo());
     document.getElementById('saveSceneBtn').addEventListener('click', () => this.showSave());
     document.getElementById('closeDialog').addEventListener('click', () => this.hideSave());
     document.getElementById('copyScene').addEventListener('click', () => this.copyScene());
     document.getElementById('loadSceneInput').addEventListener('change', (e) => this.loadScene(e));
+    document.getElementById('playPauseBtn').addEventListener('click', () => this.togglePlay());
+
+    document.getElementById('settingsToggle').addEventListener('click', (e) => {
+      e.stopPropagation();
+      e.currentTarget.parentElement.classList.toggle('open');
+    });
+    document.getElementById('settingsPanel').addEventListener('click', (e) => e.stopPropagation());
+    window.addEventListener('click', () => document.querySelector('.settings')?.classList.remove('open'));
+    document.getElementById('surfaceButtons').addEventListener('click', (e) => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      [...e.currentTarget.children].forEach((b) => b.classList.toggle('active', b === btn));
+      this.setSurface(btn.dataset.surface);
+    });
+    document.getElementById('debugToggle').addEventListener('change', (e) => this.toggleDebug(e.target.checked));
 
     document.getElementById('closeInspector').addEventListener('click', () => this.clearSelection());
 
@@ -212,6 +252,50 @@ class Playground {
     document.getElementById('fill').addEventListener('change', (e) => this.updateVisual({ fill: e.target.value }));
     document.getElementById('stroke').addEventListener('change', (e) => this.updateVisual({ stroke: e.target.value }));
     document.getElementById('lockToggle').addEventListener('change', (e) => this.toggleLock(e.target.checked));
+
+    this.inspector.addEventListener('click', (e) => {
+      const action = e.target.dataset.action;
+      if (action === 'duplicate') this.duplicateSelection();
+      if (action === 'delete') this.deleteSelection();
+    });
+
+    this.bindIdleHide();
+  }
+
+  bindIdleHide() {
+    let timer;
+    const reveal = () => {
+      this.toolbelt.classList.remove('is-hidden');
+      clearTimeout(timer);
+      timer = setTimeout(() => this.toolbelt.classList.add('is-hidden'), 2400);
+    };
+    ['mousemove', 'pointerdown', 'touchstart', 'scroll'].forEach((event) => {
+      window.addEventListener(event, reveal);
+    });
+    reveal();
+  }
+
+  togglePlay() {
+    this.paused = !this.paused;
+    const btn = document.getElementById('playPauseBtn');
+    if (this.paused) {
+      Runner.stop(this.runner);
+      btn.textContent = 'Play';
+    } else {
+      Runner.run(this.runner, this.engine);
+      btn.textContent = 'Pause';
+    }
+  }
+
+  setSurface(surface) {
+    this.appShell.classList.remove('surface-paper', 'surface-grid', 'surface-dark');
+    this.appShell.classList.add(`surface-${surface}`);
+  }
+
+  toggleDebug(enabled) {
+    this.render.options.wireframes = enabled;
+    this.render.options.showAxes = enabled;
+    this.render.options.showCollisions = enabled;
   }
 
   setupPills(id, onClick) {
@@ -248,21 +332,21 @@ class Playground {
   }
 
   handleCanvasDown(event) {
-    if (this.tool === 'select') return;
+    if (!DRAW_TOOLS.includes(this.tool)) return;
     const rect = this.render.canvas.getBoundingClientRect();
     this.isDrawing = true;
     this.dragStart = { x: event.clientX - rect.left, y: event.clientY - rect.top };
   }
 
   handleCanvasMove(event) {
-    if (!this.isDrawing || this.tool === 'select') return;
+    if (!this.isDrawing || !DRAW_TOOLS.includes(this.tool)) return;
     const rect = this.render.canvas.getBoundingClientRect();
     const current = { x: event.clientX - rect.left, y: event.clientY - rect.top };
     this.drawGhost(this.dragStart, current, this.tool);
   }
 
   handleCanvasUp(event) {
-    if (!this.isDrawing || this.tool === 'select') return;
+    if (!this.isDrawing || !DRAW_TOOLS.includes(this.tool)) return;
     const rect = this.render.canvas.getBoundingClientRect();
     const end = { x: event.clientX - rect.left, y: event.clientY - rect.top };
     const start = this.dragStart;
@@ -420,6 +504,7 @@ class Playground {
 
   clearSelection() {
     this.selectedIds = [];
+    this.constraintAnchor = null;
     this.updateSelectionVisuals();
     this.inspector.classList.add('hidden');
   }
@@ -431,7 +516,7 @@ class Playground {
       const visual = { ...model.visual };
       if (this.selectedIds.includes(id)) {
         visual.strokeWidth = (visual.strokeWidth || 2) + 2;
-        visual.stroke = '#f472b6';
+        visual.stroke = '#6366f1';
       }
       body.render = { ...body.render, ...this.renderOptionsFor(visual) };
     });
@@ -473,6 +558,16 @@ class Playground {
     [...document.getElementById(groupId).children].forEach((btn) => {
       const candidate = btn.dataset.type || btn.dataset.shape || btn.dataset.render;
       btn.classList.toggle('active', candidate === value);
+    });
+  }
+
+  updateToolButtons(activeTool) {
+    document.querySelectorAll('#toolButtons .tool').forEach((btn) => {
+      const tool = btn.dataset.tool;
+      const paletteMatch =
+        btn.classList.contains('has-palette') &&
+        [...btn.querySelectorAll('[data-tool]')].some((chip) => chip.dataset.tool === activeTool);
+      btn.classList.toggle('active', tool === activeTool || paletteMatch);
     });
   }
 
@@ -564,6 +659,88 @@ class Playground {
     this.commitHistory();
   }
 
+  handleConstraintPoint(body) {
+    if (!body?.plugin?.modelId) return;
+    if (!this.constraintAnchor) {
+      this.constraintAnchor = body;
+      this.showHint('Choose another object to connect');
+      return;
+    }
+    const from = this.constraintAnchor.plugin.modelId;
+    const to = body.plugin.modelId;
+    if (from === to) {
+      this.showHint('Pick a different object to connect');
+      this.constraintAnchor = null;
+      return;
+    }
+    this.createLink(from, to);
+    this.constraintAnchor = null;
+    this.commitHistory();
+    this.showHint('Constraint added • drag to feel the spring');
+  }
+
+  createLink(aId, bId) {
+    const bodyA = this.bodyMap.get(aId);
+    const bodyB = this.bodyMap.get(bId);
+    if (!bodyA || !bodyB) return;
+    const length = Math.min(220, Math.hypot(bodyB.position.x - bodyA.position.x, bodyB.position.y - bodyA.position.y));
+    const options = { stiffness: 0.04, damping: 0.02, length };
+    const constraint = Constraint.create({ bodyA, bodyB, ...options });
+    const id = `link-${this.nextLinkId++}`;
+    const link = { id, a: aId, b: bId, options };
+    this.links.push(link);
+    this.linkMap.set(id, constraint);
+    World.add(this.engine.world, constraint);
+  }
+
+  attachLink(link) {
+    const bodyA = this.bodyMap.get(link.a);
+    const bodyB = this.bodyMap.get(link.b);
+    if (!bodyA || !bodyB) return;
+    const constraint = Constraint.create({ bodyA, bodyB, ...(link.options || {}) });
+    this.linkMap.set(link.id, constraint);
+    World.add(this.engine.world, constraint);
+  }
+
+  refreshLinksFor(modelId) {
+    this.links.forEach((link) => {
+      if (link.a === modelId || link.b === modelId) {
+        const existing = this.linkMap.get(link.id);
+        if (existing) World.remove(this.engine.world, existing);
+        this.attachLink(link);
+      }
+    });
+  }
+
+  removeLinksFor(modelId) {
+    const remaining = [];
+    this.links.forEach((link) => {
+      if (link.a === modelId || link.b === modelId) {
+        const existing = this.linkMap.get(link.id);
+        if (existing) World.remove(this.engine.world, existing);
+        this.linkMap.delete(link.id);
+      } else {
+        remaining.push(link);
+      }
+    });
+    this.links = remaining;
+  }
+
+  resetWorld() {
+    this.clearSelection();
+    this.objects = [];
+    this.links = [];
+    this.nextId = 1;
+    this.nextLinkId = 1;
+    this.bodyMap.forEach((body) => World.remove(this.engine.world, body));
+    this.linkMap.forEach((link) => World.remove(this.engine.world, link));
+    this.bodyMap.clear();
+    this.linkMap.clear();
+    this.addBounds();
+    this.commitHistory();
+    this.showHint('Clean slate • add shapes to get moving');
+  }
+
   rebuildBody(model) {
     const existing = this.bodyMap.get(model.id);
     if (!existing) return;
@@ -581,6 +758,7 @@ class Playground {
     Body.setAngle(body, state.angle);
     World.add(this.engine.world, body);
     this.bodyMap.set(model.id, body);
+    this.refreshLinksFor(model.id);
     this.updateSelectionVisuals();
   }
 
@@ -628,6 +806,7 @@ class Playground {
       if (body) World.remove(this.engine.world, body);
       this.bodyMap.delete(id);
       this.objects = this.objects.filter((o) => o.id !== id);
+      this.removeLinksFor(id);
     });
     this.clearSelection();
     this.commitHistory();
@@ -659,7 +838,7 @@ class Playground {
 
   commitHistory() {
     this.syncModelTransforms();
-    const snapshot = JSON.parse(JSON.stringify({ objects: this.objects, nextId: this.nextId }));
+    const snapshot = JSON.parse(JSON.stringify({ objects: this.objects, links: this.links, nextId: this.nextId, nextLinkId: this.nextLinkId }));
     this.history = this.history.slice(0, this.historyIndex + 1);
     this.history.push(snapshot);
     this.historyIndex = this.history.length - 1;
@@ -667,15 +846,20 @@ class Playground {
 
   applySnapshot(snapshot) {
     this.objects = JSON.parse(JSON.stringify(snapshot.objects));
+    this.links = JSON.parse(JSON.stringify(snapshot.links || []));
     this.nextId = snapshot.nextId;
+    this.nextLinkId = snapshot.nextLinkId || this.inferNextLinkId(this.links);
     this.selectedIds = [];
     this.bodyMap.forEach((body) => World.remove(this.engine.world, body));
+    this.linkMap.forEach((link) => World.remove(this.engine.world, link));
     this.bodyMap.clear();
+    this.linkMap.clear();
     this.objects.forEach((model) => {
       const body = this.buildBody(model);
       World.add(this.engine.world, body);
       this.bodyMap.set(model.id, body);
     });
+    this.links.forEach((link) => this.attachLink(link));
     this.updateSelectionVisuals();
   }
 
@@ -694,7 +878,7 @@ class Playground {
   showSave() {
     const dialog = document.getElementById('saveDialog');
     const text = document.getElementById('sceneText');
-    text.value = JSON.stringify({ objects: this.objects }, null, 2);
+    text.value = JSON.stringify({ objects: this.objects, links: this.links, nextId: this.nextId, nextLinkId: this.nextLinkId }, null, 2);
     dialog.classList.remove('hidden');
   }
 
@@ -718,7 +902,8 @@ class Playground {
         const data = JSON.parse(reader.result);
         if (!data.objects) throw new Error('Invalid scene');
         const nextId = data.nextId || this.inferNextId(data.objects);
-        this.applySnapshot({ objects: data.objects, nextId });
+        const nextLinkId = data.nextLinkId || 1;
+        this.applySnapshot({ objects: data.objects, links: data.links || [], nextId, nextLinkId });
         this.commitHistory();
       } catch (err) {
         alert('Failed to load scene: ' + err.message);
@@ -738,6 +923,13 @@ class Playground {
 
   inferNextId(objs) {
     const ids = objs.map((o) => parseInt((o.id || '').split('-')[1], 10)).filter((n) => !Number.isNaN(n));
+    return (Math.max(-1, ...ids) || 0) + 1;
+  }
+
+  inferNextLinkId(links = []) {
+    const ids = links
+      .map((l) => parseInt((l.id || '').split('-')[1], 10))
+      .filter((n) => !Number.isNaN(n));
     return (Math.max(-1, ...ids) || 0) + 1;
   }
 }
